@@ -59,7 +59,8 @@ async function main() {
       apiPort: options.api ? parseInt(options.apiPort) : null,
       bootstrapPeers: options.bootstrap || [],
       dataDir: options.dataDir,
-      verbose: options.verbose
+      verbose: options.verbose,
+      enableVNS: options.enableVns
     });
 
     // Initialize node

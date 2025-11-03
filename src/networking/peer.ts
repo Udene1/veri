@@ -353,7 +353,34 @@ export async function createNode(bootstrapPeers: string[] = []): Promise<NodeBun
   const vlog = new VerimutLog('verimut-tasks', blocks as any, identity as any);
   const vsync = new VerimutSync(libp2p, blocks as any, vlog, 'verimut-tasks');
         await vsync.start();
-  verimut = { blocks, vlog, vsync, repoPath };
+  
+  // Initialize VNS if enabled
+  let vnsStore: any = null;
+  let vnsProtocol: any = null;
+  if (process.env.ENABLE_VNS === 'true' || process.env.ENABLE_VNS === '1') {
+    try {
+      const { VNSNamespaceStore } = await import('../vns/namespace-store.js');
+      const { VNSSecurity } = await import('../vns/security.js');
+      const { setupVNSProtocol } = await import('../protocols/vns-protocol.js');
+      
+      const security = new VNSSecurity();
+      vnsStore = new VNSNamespaceStore(blocks as any, vlog, security);
+      await vnsStore.initialize();
+      
+      // Register VNS store with sync for delta propagation
+      vsync.registerVNSStore(vnsStore);
+      await vsync.subscribeToVNS();
+      
+      // Setup VNS protocol handler
+      vnsProtocol = await setupVNSProtocol(libp2p, vnsStore);
+      
+      console.log('[VNS] Verimut Name Service enabled and initialized');
+    } catch (e) {
+      console.error('[VNS] Failed to initialize VNS:', e);
+    }
+  }
+  
+  verimut = { blocks, vlog, vsync, repoPath, vns: vnsStore ? { store: vnsStore, protocol: vnsProtocol } : null };
   // Announce presence for the verimut-tasks topic in the DHT so other
   // peers can discover topic participants if gossipsub mesh lags.
         try {
