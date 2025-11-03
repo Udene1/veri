@@ -56,15 +56,63 @@ Your node will automatically connect to the Verimut network and start participat
 
 │   ├── examples/             # Usage examples
 
-- **🔍 Proximity Search**: Find service providers near your location│   │   └── query-system-demo.ts
+- **🔍 Proximity Search**: Find service providers near your location
+- **🔐 Encrypted Storage**: Store and retrieve encrypted profile data
+- **📡 DHT Indexing**: Participate in the distributed hash table for fast searches
+- **🤝 Peer Discovery**: Connect with other nodes in the network
+- **🛡️ Privacy-First**: All sensitive data is encrypted, location privacy via geohashing
+- **🌐 VNS (Verimut Name Service)**: Decentralized DNS for `.vfs` names (NEW!)
 
-- **🔐 Encrypted Storage**: Store and retrieve encrypted profile data│   └── index.ts              # Main entry point
+## 🆕 Verimut Name Service (VNS)
 
-- **📡 DHT Indexing**: Participate in the distributed hash table for fast searches├── tests/                    # Unit tests
+**Decentralized DNS for the Verimut network** - Register and resolve human-readable `.vfs` names!
 
-- **🤝 Peer Discovery**: Connect with other nodes in the network├── package.json
+### Quick VNS Start
 
-- **🛡️ Privacy-First**: All sensitive data is encrypted, location privacy via geohashing└── tsconfig.json
+```bash
+# Start node with VNS enabled
+npm start -- --enable-vns
+
+# Register a name (CLI)
+verimutfs vns register myproject.vfs --cid QmYwAPJzv5CZsnA... --txt "My project"
+
+# Resolve a name (CLI)
+verimutfs vns resolve myproject.vfs
+
+# Via HTTP API
+curl http://localhost:3001/api/vns/resolve/myproject.vfs
+```
+
+### VNS Features
+- ✅ First-come-first-served registration
+- ✅ Proof-of-Work anti-spam (3 leading zeros, ~4k attempts)
+- ✅ Ed25519 signatures for all registrations
+- ✅ Automatic P2P sync via gossipsub
+- ✅ Last-Write-Wins conflict resolution
+- ✅ 1-year name expiration with renewal
+- ✅ Record types: A, AAAA, TXT, FS (IPFS CID), SYNC
+- ✅ HTTP API + CLI commands
+
+**📖 Full Documentation**: See [VNS_PHASE2.md](./VNS_PHASE2.md) for complete guide
+
+### VNS CLI Commands
+
+```bash
+verimutfs vns register <name>     # Register a .vfs name
+verimutfs vns resolve <name>      # Resolve name to records  
+verimutfs vns transfer <name>     # Transfer ownership
+verimutfs vns query <owner>       # Query names by owner
+```
+
+### VNS API Endpoints
+
+```
+POST   /api/vns/register          # Register new name
+GET    /api/vns/resolve/:name     # Resolve name
+POST   /api/vns/transfer/:name    # Transfer ownership
+GET    /api/vns/query?owner=...   # Query by owner
+GET    /api/vns/status            # VNS system status
+```
 
 ```
 
