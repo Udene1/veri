@@ -1,0 +1,72 @@
+{
+  "publicProfile": {
+    "peerId": "AUTO_GENERATED",
+    "skillHashes": [
+      "a1b2c3d4e5f6...",
+      "f6e5d4c3b2a1..."
+    ],
+    "geolocation": {
+      "geohash": "u4pruydqqvj",
+      "precision": 5
+    },
+    "ageRange": "30-40",
+    "availability": "available",
+    "rating": 4.8,
+    "responseTime": "< 1 hour",
+    "verified": true
+  },
+  "privateProfile": {
+    "fullName": "John Doe",
+    "email": "john.doe@example.com",
+    "phone": "+1 (555) 123-4567",
+    "skills": [
+      {
+        "name": "Web Development",
+        "category": "Technology",
+        "level": "expert",
+        "yearsExperience": 10,
+        "certifications": ["AWS Certified Developer"]
+      },
+      {
+        "name": "React & TypeScript",
+        "category": "Technology",
+        "level": "expert",
+        "yearsExperience": 5,
+        "certifications": []
+      }
+    ],
+    "bio": "Experienced full-stack developer specializing in modern web technologies. Passionate about building scalable, user-friendly applications.",
+    "education": "Bachelor of Science in Computer Science",
+    "languages": ["English", "Spanish"],
+    "hourlyRate": 100,
+    "currency": "USD",
+    "portfolio": [
+      {
+        "title": "E-commerce Platform",
+        "description": "Built a full-stack e-commerce solution",
+        "url": "https://example.com/project1",
+        "imageUrl": "https://example.com/project1.jpg"
+      }
+    ],
+    "reviews": [
+      {
+        "rating": 5,
+        "comment": "Excellent work!",
+        "reviewer": "client123",
+        "date": "2024-10-15"
+      }
+    ],
+    "exactLocation": {
+      "lat": 40.7128,
+      "lng": -74.0060,
+      "city": "New York",
+      "country": "USA"
+    },
+    "preferences": {
+      "minProjectSize": 1000,
+      "preferredProjectTypes": ["Web Development", "Mobile Apps"],
+      "workingHours": "9 AM - 6 PM EST",
+      "acceptsRemote": true
+    }
+  }
+}
