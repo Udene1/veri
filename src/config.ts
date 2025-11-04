@@ -13,6 +13,7 @@ export interface NodeConfig {
   bootstrapPeers: string[];
   dataDir: string;
   verbose: boolean;
+  enableVNS?: boolean; // Enable Verimut Name Service
 }
 
 // Default bootstrap peers (update with your network's bootstrap nodes)
@@ -48,6 +49,10 @@ export function loadConfig(options: Partial<NodeConfig> = {}): NodeConfig {
     dataDir: options.dataDir ?? 
              process.env.DATA_DIR ?? 
              './verimut-data',
+    
+    enableVNS: options.enableVNS ?? 
+               (process.env.ENABLE_VNS === 'true' || process.env.ENABLE_VNS === '1') ?? 
+               false,
     
     verbose: options.verbose ?? 
              process.env.VERBOSE === 'true'

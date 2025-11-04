@@ -24,6 +24,8 @@ export interface NodeBundle {
   controllers?: { stopBackground?: () => Promise<void> } | null;
   // runtime verimut objects (blocks, vlog, vsync, repoPath)
   verimut?: any | null;
+  // VNS (Verimut Name Service) store and protocol
+  vns?: any | null;
   // mesh health monitor
   meshMonitor?: MeshMonitor | null;
 }
@@ -207,6 +209,7 @@ export async function createNode(bootstrapPeers: string[] = []): Promise<NodeBun
   let libp2p: any = null;
   let fs: any = null;
   let verimut: any = null;
+  let vns: any = null;
 
   // componentLogger removed: avoid importing internal @libp2p/logger to keep compatibility
 
@@ -338,22 +341,59 @@ export async function createNode(bootstrapPeers: string[] = []): Promise<NodeBun
     controllers.stopHeartbeat = startHeartbeat(libp2p, attachedPubsub, cfg);
     // start redial manager to keep connections to bootstrap peers
     controllers.stopRedial = startRedialManager(libp2p, bootstrapPeers.length ? bootstrapPeers : (process.env.BOOTSTRAP_PEERS ? process.env.BOOTSTRAP_PEERS.split(',') : []));
-  // start Verimut (blockstore, log, sync) if libp2p is available
-  if (libp2p) {
+  // start Verimut (blockstore, log, sync) - works with or without libp2p (uses pubsub shim if needed)
+  const effectiveLibp2p = libp2p || { peerId, services: { pubsub: attachedPubsub }, pubsub: attachedPubsub };
+  if (true) { // Always initialize Verimut components
       try {
   const base = process.env.VERIMUT_REPO_BASE || './verimut-repos';
         try { fs.mkdirSync(base, { recursive: true }); } catch (e) { /* ignore */ }
-        const pid = libp2p.peerId?.toString?.() || (peerId && peerId.toString && peerId.toString()) || 'local';
+        const pid = (libp2p && libp2p.peerId?.toString?.()) || (peerId && peerId.toString && peerId.toString()) || 'local';
         const safePid = pid.replace(/[^a-zA-Z0-9._-]/g, '_');
         const repoPath = path.join(base, safePid);
         const identity = await createOrLoadIdentity(repoPath);
         // ensure network peerId alignment
-        identity.peerId = libp2p.peerId;
+        if (libp2p) {
+          identity.peerId = libp2p.peerId;
+        }
   const blocks = new FileBlockstore(repoPath);
   const vlog = new VerimutLog('verimut-tasks', blocks as any, identity as any);
-  const vsync = new VerimutSync(libp2p, blocks as any, vlog, 'verimut-tasks');
+  const vsync = new VerimutSync(effectiveLibp2p, blocks as any, vlog, 'verimut-tasks');
         await vsync.start();
-  verimut = { blocks, vlog, vsync, repoPath };
+  
+  // Initialize VNS if enabled
+  let vnsStore: any = null;
+  let vnsProtocol: any = null;
+  if (process.env.ENABLE_VNS === 'true' || process.env.ENABLE_VNS === '1') {
+    try {
+      const { VNSNamespaceStore } = await import('../vns/namespace-store.js');
+      const { VNSSecurity } = await import('../vns/security.js');
+      const { setupVNSProtocol } = await import('../protocols/vns-protocol.js');
+      
+      const security = new VNSSecurity();
+      vnsStore = new VNSNamespaceStore(blocks as any, vlog, security);
+      await vnsStore.initialize();
+      
+      // Register VNS store with sync for delta propagation
+      vsync.registerVNSStore(vnsStore);
+      await vsync.subscribeToVNS();
+      
+      // Setup VNS protocol handler (only if real libp2p is available)
+      if (libp2p) {
+        vnsProtocol = await setupVNSProtocol(libp2p, vnsStore);
+        console.log('[VNS] VNS protocol handler registered');
+      } else {
+        console.log('[VNS] Skipping protocol handler (libp2p not available, using pubsub shim only)');
+      }
+      
+      console.log('[VNS] Verimut Name Service enabled and initialized');
+    } catch (e) {
+      console.error('[VNS] Failed to initialize VNS:', e);
+    }
+  }
+  
+  verimut = { blocks, vlog, vsync, repoPath, vns: vnsStore ? { store: vnsStore, protocol: vnsProtocol } : null };
+  // Store VNS reference for easy API access
+  vns = vnsStore ? { store: vnsStore, protocol: vnsProtocol } : null;
   // Announce presence for the verimut-tasks topic in the DHT so other
   // peers can discover topic participants if gossipsub mesh lags.
         try {
@@ -441,7 +481,7 @@ export async function createNode(bootstrapPeers: string[] = []): Promise<NodeBun
     console.warn('Failed to start background controllers:', e);
   }
 
-  return { libp2p, helia, fs, pubsub: attachedPubsub, controllers, verimut, meshMonitor };
+  return { libp2p, helia, fs, pubsub: attachedPubsub, controllers, verimut, vns, meshMonitor };
 }
 
 export async function stopNode(bundle: NodeBundle): Promise<void> {

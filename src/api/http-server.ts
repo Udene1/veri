@@ -1026,6 +1026,127 @@ export function createApiServer(options: ApiServerOptions): http.Server {
         return;
       }
 
+      // VNS endpoints
+      if (path.startsWith('/api/vns/')) {
+        const vnsStore = (nodeBundle as any).vns?.store;
+        
+        if (!vnsStore) {
+          sendError('VNS not enabled on this node', 503);
+          return;
+        }
+
+        // POST /api/vns/register - Register a new VNS name
+        if (path === '/api/vns/register' && req.method === 'POST') {
+          try {
+            const body = await getBody();
+            if (!body || !body.name || !body.owner || !body.records) {
+              sendError('Missing required fields: name, owner, records', 400);
+              return;
+            }
+
+            // Extract peer ID from connection or use a default
+            const peerId = nodeBundle.libp2p?.peerId?.toString() || 'api-client';
+
+            const result = await vnsStore.register(body, peerId);
+            
+            if (result.success) {
+              sendJson({
+                success: true,
+                cid: result.cid,
+                message: `Successfully registered ${body.name}`
+              });
+            } else {
+              sendError(result.error || 'Registration failed', 400);
+            }
+          } catch (e: any) {
+            sendError('Registration error: ' + e.message, 500);
+          }
+          return;
+        }
+
+        // GET /api/vns/resolve/:name - Resolve a VNS name
+        if (path.startsWith('/api/vns/resolve/') && req.method === 'GET') {
+          try {
+            const name = decodeURIComponent(path.replace('/api/vns/resolve/', ''));
+            const result = await vnsStore.resolve(name);
+            
+            sendJson({
+              entry: result.found ? result : null,
+              ttl: result.ttl || 3600
+            });
+          } catch (e: any) {
+            sendError('Resolution error: ' + e.message, 500);
+          }
+          return;
+        }
+
+        // POST /api/vns/transfer/:name - Transfer name ownership
+        if (path.startsWith('/api/vns/transfer/') && req.method === 'POST') {
+          try {
+            const name = decodeURIComponent(path.replace('/api/vns/transfer/', ''));
+            const body = await getBody();
+            
+            if (!body || !body.newOwner || !body.signature) {
+              sendError('Missing required fields: newOwner, signature', 400);
+              return;
+            }
+
+            const peerId = body.currentOwner || nodeBundle.libp2p?.peerId?.toString() || 'api-client';
+            const result = await vnsStore.transfer(name, body.newOwner, body.signature, peerId);
+            
+            if (result.success) {
+              sendJson({
+                success: true,
+                message: `Successfully transferred ${name} to ${body.newOwner}`
+              });
+            } else {
+              sendError(result.error || 'Transfer failed', 400);
+            }
+          } catch (e: any) {
+            sendError('Transfer error: ' + e.message, 500);
+          }
+          return;
+        }
+
+        // GET /api/vns/query?owner=<pubkey> - Query names by owner
+        if (path === '/api/vns/query' && req.method === 'GET') {
+          try {
+            const owner = url.searchParams.get('owner');
+            if (!owner) {
+              sendError('Missing owner parameter', 400);
+              return;
+            }
+
+            const names = vnsStore.getNamesByOwner(owner);
+            sendJson({ names });
+          } catch (e: any) {
+            sendError('Query error: ' + e.message, 500);
+          }
+          return;
+        }
+
+        // GET /api/vns/status - VNS status and stats
+        if (path === '/api/vns/status' && req.method === 'GET') {
+          try {
+            sendJson({
+              enabled: vnsStore.isEnabled(),
+              entries: vnsStore.size(),
+              merkleRoot: vnsStore.getMerkleRoot(),
+              config: {
+                tld: '.vfs',
+                powDifficulty: 3,
+                rateLimit: '5/hour',
+                expiration: '1 year',
+                ttl: '3600s'
+              }
+            });
+          } catch (e: any) {
+            sendError('Status error: ' + e.message, 500);
+          }
+          return;
+        }
+      }
+
       // 404
       sendError('Not found', 404);
     } catch (e: any) {

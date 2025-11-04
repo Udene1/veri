@@ -7,6 +7,7 @@ import type { VerimutLogEntry } from './log.js';
  *
  * Protocols:
  * - pubsub topic: `/verimut/{dbName}` with message { heads: [cid], peerId }
+ * - VNS topic: `/verimut/vns` with message { type, entry, merkleRoot, peerId, timestamp }
  * - direct block protocol: `/verimut/block/1.0.0` where requester sends JSON { cid }
  *   and responder replies with the raw block bytes.
  */
@@ -16,18 +17,22 @@ export class VerimutSync {
   blockstore: any;
   log: any;
   topic: string;
+  vnsTopic: string;
   running: boolean;
   _republishInterval: any;
   _blockReqListener: any;
   // instrumentation
   directFetches: number;
   totalFetches: number;
+  // VNS store reference (optional)
+  vnsStore: any | null;
 
   constructor(libp2p: any, blockstore: any, log: any, dbName: string) {
     this.libp2p = libp2p;
     this.blockstore = blockstore;
     this.log = log;
-  this.topic = `/verimut/${dbName}`;
+    this.topic = `/verimut/${dbName}`;
+    this.vnsTopic = '/verimut/vns';
     this.running = false;
     // determine pubsub implementation
     this.pubsub = libp2p?.pubsub ?? libp2p?.services?.pubsub ?? null;
@@ -35,6 +40,22 @@ export class VerimutSync {
     // simple fetch metrics for demo instrumentation
     this.directFetches = 0;
     this.totalFetches = 0;
+    this.vnsStore = null;
+  }
+
+  /**
+   * Register VNS store for delta propagation
+   */
+  registerVNSStore(vnsStore: any): void {
+    this.vnsStore = vnsStore;
+    
+    // Set up bidirectional sync: VNS store can publish deltas via this sync
+    const peerId = this.libp2p?.peerId?.toString?.() || 'unknown';
+    vnsStore.setSyncCallback(async (delta: any) => {
+      await this.publishVNSDelta(delta);
+    }, peerId);
+    
+    console.log('[VerimutSync] VNS store registered for delta propagation');
   }
 
   async start() {
@@ -550,5 +571,111 @@ export class VerimutSync {
   _cleanupStream(stream: any, err: any) {
     try { if (stream && typeof stream.abort === 'function') stream.abort(err); } catch (e) { }
     try { if (stream && typeof stream.close === 'function') stream.close(); } catch (e) { }
+  }
+
+  /**
+   * VNS: Publish a delta to the /verimut/vns topic
+   */
+  async publishVNSDelta(delta: any): Promise<void> {
+    if (!this.pubsub || typeof this.pubsub.publish !== 'function') {
+      console.warn('[VerimutSync] Cannot publish VNS delta: pubsub not available');
+      return;
+    }
+
+    try {
+      const payload = JSON.stringify(delta);
+      await this.pubsub.publish(this.vnsTopic, Buffer.from(payload, 'utf8'));
+      console.log(`[VerimutSync] Published VNS delta: ${delta.type} for ${delta.entry.name}`);
+    } catch (e) {
+      console.error('[VerimutSync] Failed to publish VNS delta:', e);
+    }
+  }
+
+  /**
+   * VNS: Handle incoming delta from /verimut/vns topic
+   */
+  async _onVNSMessage(evt: any): Promise<void> {
+    try {
+      const detail = evt.detail;
+      if (!detail) return;
+
+      // Check topic
+      const incomingTopic = detail.topic ?? detail.topicName ?? (detail.topics && detail.topics[0]) ?? null;
+      if (incomingTopic && incomingTopic !== this.vnsTopic) return;
+
+      // Normalize payload
+      let dataBuf: Uint8Array | null = null;
+      try {
+        if (detail.data instanceof Uint8Array) dataBuf = detail.data;
+        else if (detail.data && detail.data.data instanceof Uint8Array) dataBuf = detail.data.data;
+        else if (detail.message && detail.message.data instanceof Uint8Array) dataBuf = detail.message.data;
+        else if (typeof detail.data === 'string') dataBuf = Buffer.from(detail.data, 'utf8');
+        else if (typeof detail === 'string') dataBuf = Buffer.from(detail, 'utf8');
+      } catch (e) {
+        dataBuf = null;
+      }
+
+      if (!dataBuf) {
+        console.warn('[VerimutSync VNS] Could not normalize message payload');
+        return;
+      }
+
+      // Parse delta
+      let delta: any;
+      try {
+        delta = JSON.parse(Buffer.from(dataBuf).toString('utf8'));
+      } catch (e) {
+        console.warn('[VerimutSync VNS] Message is not valid JSON');
+        return;
+      }
+
+      // Validate delta structure
+      if (!delta || !delta.type || !delta.entry || !delta.peerId) {
+        console.warn('[VerimutSync VNS] Invalid delta structure');
+        return;
+      }
+
+      // Get source peer ID
+      const sourcePeerId = delta.peerId;
+
+      // Ignore our own deltas
+      if (sourcePeerId === this.libp2p?.peerId?.toString?.()) {
+        return;
+      }
+
+      console.log(`[VerimutSync VNS] Received ${delta.type} delta for ${delta.entry.name} from ${sourcePeerId.slice(0, 16)}...`);
+
+      // Apply delta to VNS store
+      if (this.vnsStore && typeof this.vnsStore.applyDelta === 'function') {
+        const result = await this.vnsStore.applyDelta(delta, sourcePeerId);
+        if (result.applied) {
+          console.log(`[VerimutSync VNS] Successfully applied delta for ${delta.entry.name}`);
+        } else {
+          console.log(`[VerimutSync VNS] Delta not applied: ${result.error || 'unknown reason'}`);
+        }
+      } else {
+        console.warn('[VerimutSync VNS] No VNS store registered to apply delta');
+      }
+    } catch (e) {
+      console.error('[VerimutSync VNS] Error handling message:', e);
+    }
+  }
+
+  /**
+   * VNS: Subscribe to the /verimut/vns topic
+   */
+  async subscribeToVNS(): Promise<void> {
+    if (!this.pubsub || typeof this.pubsub.subscribe !== 'function') {
+      console.warn('[VerimutSync] Cannot subscribe to VNS: pubsub not available');
+      return;
+    }
+
+    try {
+      await this.pubsub.subscribe(this.vnsTopic);
+      this.pubsub.addEventListener('message', (evt: any) => this._onVNSMessage(evt));
+      console.log(`[VerimutSync] Subscribed to VNS topic: ${this.vnsTopic}`);
+    } catch (e) {
+      console.error('[VerimutSync] Failed to subscribe to VNS topic:', e);
+    }
   }
 }

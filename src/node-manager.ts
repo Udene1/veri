@@ -26,6 +26,11 @@ export class VerimutNode {
       console.log('Initializing VerimutFS node...');
     }
 
+    // Set environment variable for VNS if enabled
+    if (this.config.enableVNS) {
+      process.env.ENABLE_VNS = 'true';
+    }
+
     // Create the node bundle (libp2p + helia + all services)
     this.nodeBundle = await createNode(this.config.bootstrapPeers);
 
