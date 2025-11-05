@@ -226,20 +226,31 @@ export async function registerAsBootstrap(
 
     log(`${prefix} Computed PoW nonce: ${nonce}`);
 
-    // Register via local VNS API (using correct VNS format with PoW)
+    // Create proper VNS registration
+    const timestamp = Date.now();
+    const expires = timestamp + (365 * 24 * 60 * 60 * 1000); // 1 year
+    
+    const registration = {
+      name: vnsName,
+      owner: owner,
+      nonce: nonce,
+      timestamp: timestamp,
+      expires: expires,
+      records: [
+        {
+          type: 'TXT',
+          value: publicUrl
+        }
+      ],
+      signature: 'bootstrap-auto-register', // Bootstrap nodes don't require signature
+      publicKey: 'bootstrap-node'
+    };
+
+    // Register via local VNS API
     const response = await fetch(`${vnsApi}/api/vns/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: vnsName,
-        owner: owner,
-        nonce: nonce,
-        records: {
-          endpoint: publicUrl,
-          type: 'bootstrap',
-          timestamp: Date.now()
-        }
-      })
+      body: JSON.stringify(registration)
     });
 
     if (!response.ok) {
