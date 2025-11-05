@@ -1,127 +1,98 @@
 # Testing Guide for Friends 🚀
 
-Welcome! You've been invited to test VerimutFS before we go public. This guide will get you up and running.
+Welcome! You've been invited to help test VerimutFS before public launch. Your role is simple: **join the network and help us see how resilient it is**.
 
 ## What is VerimutFS?
 
 A decentralized skill-sharing network with a built-in **Verimut Name Service (VNS)** - think DNS for the distributed web, but cryptographically secured with Ed25519 signatures and proof-of-work.
 
-## Quick Test (Recommended)
+## What We Need From You
 
-The fastest way to verify everything works is to run our Docker E2E tests:
+**Simple:** Just run a node and keep it online for a while! We want to test:
+- Network resilience with real peers
+- How the skill/service provider website works with multiple nodes
+- P2P connectivity across different network conditions
+- VNS synchronization in a real-world scenario
+
+## How to Join the Network
 
 ### Requirements
-- **Docker Desktop** installed ([download here](https://www.docker.com/))
-- **10 minutes** of your time
+- **Node.js 18+** installed ([download here](https://nodejs.org/))
+- **20 minutes** for setup
+- **Keep your node running** for as long as comfortable (hours or days appreciated!)
 
-### Steps
+### Steps to Join
 
-1. **Clone the repo:**
+1. **Clone the repository:**
    ```bash
    git clone https://github.com/Udene1/Verimutfs.git
    cd Verimutfs
    ```
 
-2. **Run the tests:**
+2. **Install dependencies:**
+   ```bash
+   npm install
+   npm run build
+   ```
+   *(This takes 2-3 minutes)*
+
+3. **Get the bootstrap peer list:**
+   I'll provide you with a list of HTTP bootstrap peers. Set this environment variable:
    
    **Windows (PowerShell):**
    ```powershell
-   .\run-tests.ps1
+   $env:ENABLE_VNS="true"
+   $env:HTTP_BOOTSTRAP_PEERS="http://peer1.example.com:3001,http://peer2.example.com:3001"
+   npm start
    ```
    
    **Mac/Linux:**
    ```bash
-   docker compose down -v
-   docker compose up --build --abort-on-container-exit
+   export ENABLE_VNS=true
+   export HTTP_BOOTSTRAP_PEERS="http://peer1.example.com:3001,http://peer2.example.com:3001"
+   npm start
+   ```
+   
+   *Replace the URLs with the actual bootstrap peers I provide*
+
+4. **Verify your node is running:**
+   Open a browser and visit:
+   ```
+   http://localhost:3001/api/vns/status
+   ```
+   
+   You should see:
+   ```json
+   {
+     "enabled": true,
+     "entries": 4,
+     "merkleRoot": "eb843f04ad2455ca859bf0fd7974ee1a48d7fc0f98eae0ed7299bf45811cd4ef"
+   }
    ```
 
-3. **Wait for the magic:**
-   - Docker will build 3 nodes
-   - Tests will run automatically
-   - You should see: `Success Rate: 100.0%` (8/8 tests passing)
+5. **Keep it running!**
+   - Leave your node running as long as comfortable (hours/days appreciated)
+   - Watch the terminal - you'll see sync activity and delta propagation
+   - Your node will automatically sync VNS entries from other nodes
 
-### What's Being Tested?
+## Advanced: Docker Multi-Node Testing (Optional)
 
-The test suite verifies:
-- ✅ **Name Registration**: Register `e2etest.vfs` on Node1
-- ✅ **Multi-Node Sync**: Name propagates to Node2 and Node3 via HTTP-based P2P
-- ✅ **Signature Validation**: Ed25519 cryptographic signatures work correctly
-- ✅ **Proof-of-Work**: PoW validation (SHA256, 3 leading zeros)
-- ✅ **Conflict Resolution**: Last-Write-Wins (LWW) for concurrent updates
-- ✅ **Consistency**: Merkle roots match across all nodes
-- ✅ **Persistence**: Entries survive node restarts
+If you want to see the full system in action locally, you can run our Docker E2E tests:
 
-## Single Node Test (Manual)
+**Windows (PowerShell):**
+```powershell
+.\run-tests.ps1
+```
 
-Want to run a single node manually? Here's how:
-
-### 1. Install Dependencies
+**Mac/Linux:**
 ```bash
-npm install
-npm run build
+docker compose down -v
+docker compose up --build --abort-on-container-exit
 ```
 
-### 2. Start Node with VNS
-```bash
-# Set environment variable to enable VNS
-export ENABLE_VNS=true    # Mac/Linux
-$env:ENABLE_VNS="true"    # Windows PowerShell
+Expected result: `Success Rate: 100.0%` (8/8 tests passing)
 
-npm start
-```
-
-### 3. Verify VNS is Running
-Open a browser and visit:
-```
-http://localhost:3001/api/vns/status
-```
-
-You should see:
-```json
-{
-  "enabled": true,
-  "entries": 4,
-  "merkleRoot": "eb843f04ad2455ca859bf0fd7974ee1a48d7fc0f98eae0ed7299bf45811cd4ef"
-}
-```
-
-### 4. Register a Name
-
-Create a file `register-test.json`:
-```json
-{
-  "name": "myname.vfs",
-  "owner": "your-peer-id-here",
-  "records": [
-    { "type": "A", "value": "192.168.1.100", "ttl": 3600 },
-    { "type": "TXT", "value": "My First VNS Entry", "ttl": 3600 }
-  ],
-  "timestamp": 1699564800000,
-  "expires": 1731187200000,
-  "nonce": "00000abc",
-  "signature": "base64-signature-here",
-  "publicKey": "base64-ed25519-public-key-here"
-}
-```
-
-**Important:** You need to:
-1. Compute valid proof-of-work (nonce with 3 leading zeros)
-2. Sign with Ed25519 private key
-3. Use canonical JSON format
-
-**Easier way:** Use the E2E test code as a reference (`tests/e2e/vns-multinode.test.js`)
-
-Register via API:
-```bash
-curl -X POST http://localhost:3001/api/vns/register \
-  -H "Content-Type: application/json" \
-  -d @register-test.json
-```
-
-### 5. Resolve a Name
-```bash
-curl http://localhost:3001/api/vns/resolve/myname.vfs
-```
+This spins up 3 nodes locally and tests all VNS features. See the Docker test logs in the repo for transparency on how the system works
 
 ## What to Look For
 
