@@ -76,7 +76,7 @@ export class VerimutSync {
       
       const envVar = process.env.HTTP_BOOTSTRAP_PEERS || '';
       const bootstrapPeers = await expandBootstrapPeers(envVar, {
-        seedBootstraps: ['http://seed.verimut.com:3001'], // TODO: Update with your genesis node
+        seedBootstraps: ['http://102.90.98.234:3001'], // Genesis bootstrap node
         verbose: process.env.VERBOSE === 'true'
       });
       
