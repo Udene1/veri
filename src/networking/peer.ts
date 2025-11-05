@@ -4,6 +4,10 @@ import { unixfs } from '@helia/unixfs';
 import pino from 'pino';
 import { gossipsub } from '@chainsafe/libp2p-gossipsub';
 import { kadDHT } from '@libp2p/kad-dht';
+import { tcp } from '@libp2p/tcp';
+import { noise } from '@libp2p/noise';
+import { yamux } from '@libp2p/yamux';
+import { mplex } from '@libp2p/mplex';
 
 import { createStandaloneLibp2p } from './standalone-libp2p.js';
 import { MeshMonitor } from './mesh-monitor.js';
@@ -217,27 +221,20 @@ export async function createNode(bootstrapPeers: string[] = []): Promise<NodeBun
   const peerId = await getPersistentPeerId();
 
   try {
-    // Temporarily skip custom libp2p due to logger configuration compatibility issues
-    // TODO: Fix standalone-libp2p.ts logger setup for libp2p 0.45.0
-    // try {
-    //   libp2p = await createStandaloneLibp2p(listenPort);
-    //   helia = await createHelia({ libp2p, peerId } as any);
-    //   fs = unixfs(helia);
-    //   console.log('Created Helia with custom libp2p; libp2p available:', !!libp2p);
-    // } catch (e) {
-    //   console.warn('Failed to create custom libp2p + Helia, falling back to default Helia:', e);
-    // }
-
-    if (!helia) {
-      // Use default Helia which creates its own libp2p with proper logger setup
-      // Note: Default Helia doesn't expose libp2p publicly but uses it internally
+    // Create custom libp2p with gossipsub and DHT for true P2P networking
+    try {
+      libp2p = await createStandaloneLibp2p(listenPort);
+      helia = await createHelia({ libp2p, peerId } as any);
+      fs = unixfs(helia);
+      console.log('Created Helia with custom libp2p; libp2p available:', !!libp2p);
+    } catch (e) {
+      console.warn('Failed to create custom libp2p + Helia, falling back to default Helia:', e);
+      // Fallback to default Helia if custom libp2p fails
       try {
         helia = await createHelia({ peerId } as any);
         fs = unixfs(helia);
-        // Don't try to access helia.libp2p - it throws an error if not configured with external libp2p
-        // For now, we'll work with just Helia for file storage
         libp2p = null;
-        console.log('Helia started with internal libp2p (not exposed)');
+        console.log('Helia started with default config (fallback)');
       } catch (err) {
         console.warn('Failed to create Helia (embedded IPFS). Networking will be limited.', err);
       }
@@ -303,7 +300,8 @@ export async function createNode(bootstrapPeers: string[] = []): Promise<NodeBun
   if (needsShim) {
     // Simple EventTarget-based shim that supports publish(topic, Uint8Array) and addEventListener('message', ...)
     class LocalPubsub extends EventTarget {
-      async publish(topic: string, data: Uint8Array | Buffer) {
+      isShim = true; // Mark as shim to prevent HTTP fallback blocking
+      async publish(topic: string, data: Buffer | Uint8Array) {
         try {
           const evt = new CustomEvent('message', { detail: { topic, data: data instanceof Buffer ? data : Buffer.from(data as any) } });
           // dispatch asynchronously
@@ -313,6 +311,8 @@ export async function createNode(bootstrapPeers: string[] = []): Promise<NodeBun
       async subscribe(_topic: string) { /* no-op for local shim */ }
     }
     attachedPubsub = new LocalPubsub() as any;
+    // Mark as shim so VerimutSync can detect and use HTTP fallback
+    (attachedPubsub as any).isShim = true;
     // attach shim to libp2p for later use (only if libp2p exists)
     if (libp2p) {
       // @ts-ignore
@@ -322,7 +322,7 @@ export async function createNode(bootstrapPeers: string[] = []): Promise<NodeBun
       // @ts-ignore
       libp2p.pubsub = attachedPubsub;
     }
-    console.log('Local in-process pubsub shim attached (single-node demo)');
+    console.log('Local in-process pubsub shim attached (single-node demo) - HTTP fallback will be used for VNS sync');
   }
 
   const controllers: any = {};

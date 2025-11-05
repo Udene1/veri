@@ -26,6 +26,8 @@ export class VerimutSync {
   totalFetches: number;
   // VNS store reference (optional)
   vnsStore: any | null;
+  // HTTP-based P2P fallback for VNS
+  httpBootstrapPeers: string[];
 
   constructor(libp2p: any, blockstore: any, log: any, dbName: string) {
     this.libp2p = libp2p;
@@ -41,6 +43,10 @@ export class VerimutSync {
     this.directFetches = 0;
     this.totalFetches = 0;
     this.vnsStore = null;
+    // HTTP bootstrap peers from environment (comma-separated URLs)
+    this.httpBootstrapPeers = process.env.HTTP_BOOTSTRAP_PEERS 
+      ? process.env.HTTP_BOOTSTRAP_PEERS.split(',').map(p => p.trim())
+      : [];
   }
 
   /**
@@ -574,20 +580,54 @@ export class VerimutSync {
   }
 
   /**
-   * VNS: Publish a delta to the /verimut/vns topic
+   * VNS: Publish a delta to the /verimut/vns topic (or HTTP fallback)
    */
   async publishVNSDelta(delta: any): Promise<void> {
-    if (!this.pubsub || typeof this.pubsub.publish !== 'function') {
-      console.warn('[VerimutSync] Cannot publish VNS delta: pubsub not available');
-      return;
+    // Try pubsub first if available AND not a local shim
+    const isShim = this.pubsub && (this.pubsub as any).isShim === true;
+    if (this.pubsub && typeof this.pubsub.publish === 'function' && !isShim) {
+      try {
+        const payload = JSON.stringify(delta);
+        await this.pubsub.publish(this.vnsTopic, Buffer.from(payload, 'utf8'));
+        console.log(`[VerimutSync] Published VNS delta via pubsub: ${delta.type} for ${delta.entry.name}`);
+        return;
+      } catch (e) {
+        console.error('[VerimutSync] Failed to publish VNS delta via pubsub:', e);
+      }
+    }
+    
+    // Skip shim and go straight to HTTP if shim is detected
+    if (isShim) {
+      console.log('[VerimutSync] Detected local pubsub shim, using HTTP fallback for multi-node sync');
     }
 
-    try {
-      const payload = JSON.stringify(delta);
-      await this.pubsub.publish(this.vnsTopic, Buffer.from(payload, 'utf8'));
-      console.log(`[VerimutSync] Published VNS delta: ${delta.type} for ${delta.entry.name}`);
-    } catch (e) {
-      console.error('[VerimutSync] Failed to publish VNS delta:', e);
+    // Fallback to HTTP-based P2P if pubsub not available
+    if (this.httpBootstrapPeers.length > 0) {
+      console.log(`[HTTP-P2P] Pushing VNS delta to ${this.httpBootstrapPeers.length} bootstrap peer(s)`);
+      
+      for (const peerUrl of this.httpBootstrapPeers) {
+        try {
+          const fetch = (await import('node-fetch')).default;
+          const response = await fetch(`${peerUrl}/api/vns/push-delta`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...delta,
+              fromPeer: this.libp2p?.peerId?.toString?.() || 'unknown'
+            })
+          });
+          
+          if (response.ok) {
+            console.log(`[HTTP-P2P] Successfully pushed delta to ${peerUrl}`);
+          } else {
+            console.warn(`[HTTP-P2P] Failed to push to ${peerUrl}: ${response.status}`);
+          }
+        } catch (e: any) {
+          console.warn(`[HTTP-P2P] Error pushing to ${peerUrl}:`, e.message);
+        }
+      }
+    } else {
+      console.warn('[VerimutSync] Cannot publish VNS delta: no pubsub and no HTTP bootstrap peers configured');
     }
   }
 
