@@ -145,6 +145,71 @@ npm start -- --bootstrap /ip4/YOUR_BOOTSTRAP_IP/tcp/4001/p2p/QmPeerID
 
 ---
 
+## 🧪 Testing Multi-Node VNS Sync (Docker)
+
+Want to test the full network with 3 nodes syncing VNS entries? We have Docker E2E tests!
+
+### Prerequisites
+- Docker Desktop installed ([docker.com](https://www.docker.com/))
+- Docker daemon running
+
+### Run the Tests
+
+**Windows (PowerShell):**
+```powershell
+.\run-tests.ps1
+```
+
+**Mac/Linux:**
+```bash
+docker compose down -v
+docker compose up --build --abort-on-container-exit
+```
+
+### What Gets Tested
+
+The test suite spins up 3 nodes and verifies:
+- ✅ All nodes initialize with VNS enabled
+- ✅ Name registration on Node1
+- ✅ HTTP-based P2P sync to Node2 and Node3
+- ✅ Ed25519 signature validation
+- ✅ Proof-of-Work (PoW) validation
+- ✅ Last-Write-Wins (LWW) conflict resolution
+- ✅ Merkle root consistency
+- ✅ Entry counts match across all nodes
+
+**Expected output:** `Success Rate: 100.0%` (8/8 tests passing)
+
+### Understanding the HTTP-P2P Architecture
+
+Due to libp2p 0.45.0 logger architecture limitations, VerimutFS uses HTTP-based P2P for VNS delta propagation:
+
+1. Each node has an HTTP API endpoint: `POST /api/vns/push-delta`
+2. When a VNS entry changes, VerimutSync detects the pubsub shim
+3. Falls back to HTTP POST to all `HTTP_BOOTSTRAP_PEERS`
+4. Remote nodes receive deltas, validate, and apply them
+5. Bidirectional sync: All nodes can push to all other nodes
+
+This preserves VerimutLog and VerimutSync functionality while working around libp2p's component creation restrictions.
+
+### Configuration
+
+Edit `docker-compose.yml` to customize:
+- **HTTP_BOOTSTRAP_PEERS**: Comma-separated URLs of other nodes
+- **API_PORT**: HTTP API listen port (default: 3001)
+- **ENABLE_VNS**: Set to `true` to enable VNS features
+
+Example:
+```yaml
+environment:
+  - ENABLE_VNS=true
+  - HTTP_BOOTSTRAP_PEERS=http://172.25.0.10:3001,http://172.25.0.11:3001
+```
+
+**Note:** For production deployment, use public IPs/domains instead of Docker network IPs.
+
+---
+
 ## Next Steps
 
 ✅ **Node is running** - You're part of the network!
