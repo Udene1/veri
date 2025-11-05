@@ -14,8 +14,39 @@
  * - Supports both static IPs and VNS-based discovery
  */
 
+import crypto from 'crypto';
+
 // Simple logging utility
 const log = (message: string) => console.log(message);
+
+/**
+ * Compute proof-of-work nonce for VNS registration
+ * Uses SHA-256 with configurable difficulty (default: 3 leading zeros)
+ */
+async function computeProofOfWork(
+  name: string,
+  owner: string,
+  difficulty: number = 3,
+  maxAttempts: number = 1000000
+): Promise<number | null> {
+  const prefix = '0'.repeat(difficulty);
+  
+  for (let nonce = 0; nonce < maxAttempts; nonce++) {
+    const input = `${name}:${owner}:${nonce}`;
+    const hash = crypto.createHash('sha256').update(input).digest('hex');
+    
+    if (hash.startsWith(prefix)) {
+      return nonce;
+    }
+    
+    // Log progress every 100k attempts
+    if (nonce > 0 && nonce % 100000 === 0) {
+      log(`[BootstrapDiscovery] Computing PoW... ${nonce} attempts`);
+    }
+  }
+  
+  return null; // Failed to find valid nonce
+}
 
 export interface BootstrapDiscoveryConfig {
   /**
@@ -184,13 +215,25 @@ export async function registerAsBootstrap(
   try {
     log(`${prefix} Registering as bootstrap: ${vnsName} → ${publicUrl}`);
 
-    // Register via local VNS API (using correct VNS format)
+    // Compute proof-of-work nonce
+    const owner = 'bootstrap-node';
+    const nonce = await computeProofOfWork(vnsName, owner);
+    
+    if (nonce === null) {
+      log(`${prefix} ✗ Failed to compute proof-of-work`);
+      return false;
+    }
+
+    log(`${prefix} Computed PoW nonce: ${nonce}`);
+
+    // Register via local VNS API (using correct VNS format with PoW)
     const response = await fetch(`${vnsApi}/api/vns/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: vnsName,
-        owner: 'bootstrap-node',
+        owner: owner,
+        nonce: nonce,
         records: {
           endpoint: publicUrl,
           type: 'bootstrap',
