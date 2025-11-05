@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  # Bootstrap node (Node 1)
+  vns-node1:
+    build: .
+    container_name: vns-node1
+    hostname: vns-node1
+    ports:
+      - "3001:3001"
+    environment:
+      - ENABLE_VNS=true
+      - DATA_DIR=/data
+      - LISTEN_PORT=4001
+      - API_PORT=3001
+      - HTTP_BOOTSTRAP_PEERS=http://172.25.0.11:3001,http://172.25.0.12:3001
+      - LIBP2P_TRANSPORT_TAG=tcp
+      - VERBOSE=true
+    volumes:
+      - node1-data:/data
+    networks:
+      vns-network:
+        ipv4_address: 172.25.0.10
+
+  # Peer node 2
+  vns-node2:
+    build: .
+    container_name: vns-node2
+    hostname: vns-node2
+    ports:
+      - "3002:3001"
+    environment:
+      - ENABLE_VNS=true
+      - DATA_DIR=/data
+      - LISTEN_PORT=4001
+      - API_PORT=3001
+      - BOOTSTRAP_PEERS=/ip4/172.25.0.10/tcp/4001
+      - HTTP_BOOTSTRAP_PEERS=http://172.25.0.10:3001
+      - LIBP2P_TRANSPORT_TAG=tcp
+      - VERBOSE=true
+    volumes:
+      - node2-data:/data
+    networks:
+      vns-network:
+        ipv4_address: 172.25.0.11
+    depends_on:
+      - vns-node1
+
+  # Peer node 3
+  vns-node3:
+    build: .
+    container_name: vns-node3
+    hostname: vns-node3
+    ports:
+      - "3003:3001"
+    environment:
+      - ENABLE_VNS=true
+      - DATA_DIR=/data
+      - LISTEN_PORT=4001
+      - API_PORT=3001
+      - BOOTSTRAP_PEERS=/ip4/172.25.0.10/tcp/4001
+      - HTTP_BOOTSTRAP_PEERS=http://172.25.0.10:3001
+      - LIBP2P_TRANSPORT_TAG=tcp
+      - VERBOSE=true
+    volumes:
+      - node3-data:/data
+    networks:
+      vns-network:
+        ipv4_address: 172.25.0.12
+    depends_on:
+      - vns-node1
+
+  # Test runner container
+  e2e-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: vns-e2e-tests
+    environment:
+      - NODE1_API=http://vns-node1:3001
+      - NODE2_API=http://vns-node2:3001
+      - NODE3_API=http://vns-node3:3001
+      - NODE_ENV=test
+    networks:
+      - vns-network
+    depends_on:
+      - vns-node1
+      - vns-node2
+      - vns-node3
+
+networks:
+  vns-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+
+volumes:
+  node1-data:
+  node2-data:
+  node3-data:

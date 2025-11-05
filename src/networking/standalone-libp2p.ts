@@ -7,6 +7,10 @@ import { kadDHT } from '@libp2p/kad-dht';
 import { noise } from '@libp2p/noise';
 
 export async function createStandaloneLibp2p(listenPort: number) {
+  // Set transport tag fallback to prevent "Transport must have a valid tag" error
+  if (typeof process !== 'undefined' && !process.env.LIBP2P_TRANSPORT_TAG) {
+    process.env.LIBP2P_TRANSPORT_TAG = 'tcp';
+  }
 
   try {
     const config = {

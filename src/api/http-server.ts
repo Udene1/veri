@@ -1145,6 +1145,31 @@ export function createApiServer(options: ApiServerOptions): http.Server {
           }
           return;
         }
+
+        // POST /api/vns/push-delta - Receive VNS delta from another node (HTTP-based P2P)
+        if (path === '/api/vns/push-delta' && req.method === 'POST') {
+          let body = '';
+          req.on('data', chunk => { body += chunk.toString(); });
+          req.on('end', async () => {
+            try {
+              const delta = JSON.parse(body);
+              console.log(`[HTTP-P2P] Received VNS delta from ${delta.fromPeer || 'unknown'}: ${delta.type} for ${delta.entry?.name || 'unknown'}`);
+              
+              // Apply the delta using VNS store's applyDelta method
+              const result = await vnsStore.applyDelta(delta, delta.fromPeer || 'http-peer');
+              
+              sendJson({ 
+                success: true,
+                message: 'Delta applied successfully',
+                merkleRoot: vnsStore.getMerkleRoot()
+              });
+            } catch (e: any) {
+              console.error('[HTTP-P2P] Failed to process delta:', e);
+              sendError('Delta processing error: ' + e.message, 500);
+            }
+          });
+          return;
+        }
       }
 
       // 404
