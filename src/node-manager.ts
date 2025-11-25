@@ -42,6 +42,24 @@ export class VerimutNode {
       });
     }
 
+    // Check if bootstrap mode and display info
+    const bootstrapMode = process.env.BOOTSTRAP_MODE === 'true';
+    const bootstrapUrl = process.env.BOOTSTRAP_PUBLIC_URL;
+    const isGenesis = process.env.IS_GENESIS_BOOTSTRAP === 'true';
+
+    if (bootstrapMode && bootstrapUrl) {
+      console.log('\n🔵 BOOTSTRAP NODE MODE');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`📍 Bootstrap URL: ${bootstrapUrl}`);
+      console.log(`🌍 Genesis Node: ${isGenesis ? 'YES (First node)' : 'NO (Relay node)'}`);
+      console.log(`📡 VNS Name: bootstrap.vfs`);
+      console.log(`✅ This node will accept peer connections`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    } else if (bootstrapMode) {
+      console.log('\n⚠️  Bootstrap mode enabled but BOOTSTRAP_PUBLIC_URL not set');
+      console.log('   Set BOOTSTRAP_PUBLIC_URL in .env file\n');
+    }
+
     if (this.config.verbose) {
       console.log('Node started successfully');
     }
